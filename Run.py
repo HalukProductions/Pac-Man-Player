@@ -5,6 +5,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
+import xml.etree.ElementTree as ET
 import time
 from GUI import GameGUI
 import tkinter as tk
@@ -35,13 +36,16 @@ def get_positions(driver):
                             int(float(ghost_elem.value_of_css_property('top')[:-2])))
     return pacman_pos, ghosts
 
-def get_state(driver):
+def get_state(driver, walls):
     score = int(driver.find_element(By.ID, "points-display").text)
     lives = len(driver.find_elements(By.CSS_SELECTOR, "#extra-lives img"))
     pacman_pos, ghost_positions = get_positions(driver)
+    # Include logic to detect nearby walls based on the pacman's position and the walls data
+
     ghost_pos_tuple = tuple(ghost_positions[ghost] for ghost in sorted(ghost_positions))
-    state = (score, lives, pacman_pos) + ghost_pos_tuple
+    state = (score, lives, pacman_pos) + ghost_pos_tuple  # Consider including wall data in the state if useful
     return state
+
 
 def choose_action(state):
     if random.random() < epsilon:  # Exploration: choose a random action
@@ -62,17 +66,17 @@ def update_q_table(state, action, reward, next_state):
     q_table[state][action_index] = new_q_value
 
 
-def play_one_step(driver, action):
-    # Get the current position before action
-    current_state = get_state(driver)
+def play_one_step(driver, action, walls):
+    # Get the current position before action, pass walls to get_state
+    current_state = get_state(driver, walls)
     current_score, current_lives, current_pacman_pos, _ = current_state[:4]
     
     # Perform the action
     driver.find_element(By.TAG_NAME, 'body').send_keys(action)
     time.sleep(0.5)
     
-    # Get the new state after action
-    new_state = get_state(driver)
+    # Get the new state after action, also pass walls to get_state
+    new_state = get_state(driver, walls)
     new_score, new_lives, new_pacman_pos, _ = new_state[:4]
     
     # Calculate reward based on the movement and score change
@@ -106,21 +110,65 @@ def run_game_logic(gui, epsilon):
     driver.get('https://freepacman.org/')
     WebDriverWait(driver, 20).until(lambda d: button_disabled(d))
     
+    walls = get_maze_layout("maze_blue.svg")
+    last_update_time = time.time()
+    
     while True:
-        state = get_state(driver)
-        action = choose_action(state)
-        next_state, reward = play_one_step(driver, action)
-        update_q_table(state, action, reward, next_state)
+        current_time = time.time()
+        if current_time - last_update_time > 0.1:  # Update every 100 ms
+            state = get_state(driver, walls)
+            action = choose_action(state)
+            next_state, reward = play_one_step(driver, action, walls)
+            update_q_table(state, action, reward, next_state)
 
-        # GUI Update
-        score, lives, pacman_pos, ghost_positions = state[0], state[1], state[2], state[3:]
-        action_log = [(action_names[action], score, lives)]  # Simplified for demo
-        gui.update_gui(score, lives, pacman_pos, ghost_positions, action_log)
+            # Extract score, lives, pacman position, and ghost positions correctly
+            score = state[0]
+            lives = state[1]
+            pacman_pos = state[2]
+            ghost_positions = {ghost: state[i+3] for i, ghost in enumerate(["blinky", "pinky", "inky", "clyde"])}
+            
+            action_log.append((action_names[action], score, lives))
+            if len(action_log) > 10:
+                action_log.pop(0)
 
-        if game_over(driver):
-            restart_game(driver)
-            state = get_state(driver)
-            epsilon *= 0.99  # Optionally decay epsilon
+            gui.update_gui(score, lives, pacman_pos, ghost_positions, walls, action_log)
+
+            if game_over(driver):
+                restart_game(driver)
+                state = get_state(driver, walls)
+                epsilon *= 0.99  # Optionally decay epsilon
+            
+            last_update_time = current_time
+
+def parse_svg(svg_path):
+    # Parse the SVG file to extract walls
+    tree = ET.parse(svg_path)
+    root = tree.getroot()
+    walls = []
+    # Assuming walls are represented as rect elements in the SVG
+    for elem in root.findall('.//{http://www.w3.org/2000/svg}rect'):
+        x = elem.get('x')
+        y = elem.get('y')
+        width = elem.get('width')
+        height = elem.get('height')
+
+        # Check if any necessary attribute is None before converting to float
+        if x is not None and y is not None and width is not None and height is not None:
+            x = float(x)
+            y = float(y)
+            width = float(width)
+            height = float(height)
+            walls.append((x, y, width, height))
+        else:
+            print(f"Skipping rect with missing attributes: x={x}, y={y}, width={width}, height={height}")
+    return walls
+
+
+def get_maze_layout(svg_path):
+    walls = parse_svg(svg_path)
+    # Convert the wall data into a useful format for the game AI
+    # Here you may need to adjust this to fit how you handle coordinates in your game
+    return walls
 
 def main():
     root = tk.Tk()
