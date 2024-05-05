@@ -26,26 +26,27 @@ class GameGUI:
         self.action_log_display.pack()
 
     def update_gui(self, score, lives, pacman_pos, ghost_positions, walls, action_log):
-        # Updating labels and listbox
         self.score_label.config(text=f"Score: {score}")
         self.lives_label.config(text=f"Lives: {lives}")
         position_text = f"Pacman: {pacman_pos}, Ghosts: {ghost_positions}"
         self.position_label.config(text=position_text)
         self.action_log_display.delete(0, tk.END)
+        
         for action in action_log:
             self.action_log_display.insert(tk.END, f"Action: {action[0]}, Score: {action[1]}, Lives: {action[2]}")
-
-        # Clearing and redrawing the canvas
+        
         self.canvas.delete("all")
-        self.draw_walls(walls)
+        if walls:
+            self.draw_walls(walls)
+        else:
+            print("No walls to draw.")
+            
         self.draw_pacman(pacman_pos)
         self.draw_ghosts(ghost_positions)
 
     def draw_walls(self, walls):
-        for (x, y, width, height) in walls:
-            self.canvas.create_rectangle(x, y, x+width, y+height, fill='blue')
-            #Debugging:
-            print(f"Drawing wall at x={x}, y={y}, width={width}, height={height}")
+        for (x1, y1, x2, y2) in walls:
+            self.canvas.create_line(x1, y1, x2, y2, fill='blue', width=2)
 
     def draw_pacman(self, pos):
         x, y = pos

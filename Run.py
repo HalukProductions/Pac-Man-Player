@@ -5,7 +5,7 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
-import xml.etree.ElementTree as ET
+import svgpathtools
 import time
 from GUI import GameGUI
 import tkinter as tk
@@ -126,7 +126,7 @@ def run_game_logic(gui, epsilon):
             lives = state[1]
             pacman_pos = state[2]
             ghost_positions = {ghost: state[i+3] for i, ghost in enumerate(["blinky", "pinky", "inky", "clyde"])}
-            
+
             action_log.append((action_names[action], score, lives))
             if len(action_log) > 10:
                 action_log.pop(0)
@@ -141,33 +141,19 @@ def run_game_logic(gui, epsilon):
             last_update_time = current_time
 
 def parse_svg(svg_path):
-    # Parse the SVG file to extract walls
-    tree = ET.parse(svg_path)
-    root = tree.getroot()
+    paths, attributes = svgpathtools.svg2paths(svg_path)
     walls = []
-    # Assuming walls are represented as rect elements in the SVG
-    for elem in root.findall('.//{http://www.w3.org/2000/svg}rect'):
-        x = elem.get('x')
-        y = elem.get('y')
-        width = elem.get('width')
-        height = elem.get('height')
-
-        # Check if any necessary attribute is None before converting to float
-        if x is not None and y is not None and width is not None and height is not None:
-            x = float(x)
-            y = float(y)
-            width = float(width)
-            height = float(height)
-            walls.append((x, y, width, height))
-        else:
-            print(f"Skipping rect with missing attributes: x={x}, y={y}, width={width}, height={height}")
+    for path in paths:
+        # Assuming walls are straight lines only for simplicity
+        for line in path:
+            if type(line) is svgpathtools.Line:
+                x1, y1 = line.start.real, line.start.imag
+                x2, y2 = line.end.real, line.end.imag
+                walls.append((x1, y1, x2, y2))
     return walls
-
 
 def get_maze_layout(svg_path):
     walls = parse_svg(svg_path)
-    # Convert the wall data into a useful format for the game AI
-    # Here you may need to adjust this to fit how you handle coordinates in your game
     return walls
 
 def main():
